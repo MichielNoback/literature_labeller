@@ -1,0 +1,19 @@
+# Large source corpora — kept locally, never committed
+data/pubmed_scan_2026_02_02_all_data_filtered.txt
+data/pubmed_whole_merged.csv
+
+# Generated sample and label database
+data/pubmed_sample_with_keywords.csv
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# macOS
+.DS_Store
