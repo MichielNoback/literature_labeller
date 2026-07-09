@@ -1,0 +1,15 @@
+# Literature Labeller configuration.
+#
+# Paths are resolved relative to this config file's directory (or absolute).
+dataset_path: data/pubmed_sample_with_keywords.csv
+keywords_path: data/PESTICIDE_TERMS_20260323_with_compound_data.csv
+output_csv: data/pubmed_labels.csv
+db_path: data/labels.db
+
+# Labels the annotator can assign. `id` doubles as the keyboard shortcut (0-9).
+labels:
+  - {id: 0, name: negative,      display: Negative}
+  - {id: 1, name: human_animal,  display: Human/Animal}
+  - {id: 2, name: environmental, display: Environmental}
+  - {id: 3, name: foodstuff,     display: Foods and Fluids}
+  - {id: 4, name: other,         display: Other}

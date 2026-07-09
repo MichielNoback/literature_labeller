@@ -4,6 +4,8 @@ data/pubmed_whole_merged.csv
 
 # Generated sample and label database
 data/pubmed_scan_2026_02_02_sample.txt
+data/pubmed_sample_with_keywords.csv
+data/pubmed_labels.csv
 data/*.db
 data/*.db-wal
 data/*.db-shm
