@@ -77,14 +77,6 @@ class LabelStore:
         cur = self._conn.execute("SELECT pmid FROM labels")
         return {row["pmid"] for row in cur.fetchall()}
 
-    def get_prev(self) -> str | None:
-        """Return the most recently labelled pmid (for the left-arrow re-edit flow)."""
-        cur = self._conn.execute(
-            "SELECT pmid FROM labels ORDER BY timestamp DESC, rowid DESC LIMIT 1"
-        )
-        row = cur.fetchone()
-        return row["pmid"] if row else None
-
     def export_csv(self, dataset: Dataset, output_csv: str | Path) -> int:
         """Write every dataset row joined with its label to ``output_csv``.
 

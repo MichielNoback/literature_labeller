@@ -64,15 +64,22 @@ pytest                               # test env needs pytest; base conda lacks i
   excludes empty-abstract rows, and writes clean TSV. Verified locally: 19/19 tests pass;
   `make_sample.py` wrote 15,000 rows (of 406,124 with abstracts; 32,558 empty ones excluded);
   `load_dataset` reads all 12 columns with 0 empty abstracts; 2,043 keyword terms load.
-- Local `.venv` (gitignored) has `pytest` + `pyyaml` only — `nicegui` not yet installed.
+- Local `.venv` (gitignored) has `pytest`, `pyyaml`, `nicegui` 3.16, and `playwright` (+ Chromium).
+- **App verified live end-to-end (2026-08-26)** on nicegui 3.16 via a Playwright browser drive
+  against the real 15k sample: entry renders, mouse-click labelling, hotkey labelling, ArrowLeft
+  re-edit (shows the existing label), relabel/overwrite (last-wins), and Exit → cumulative CSV
+  export (15,000 rows, correct labels + `2026-08-26;HH:MM` timestamps) all confirmed. Reconciliation
+  changes committed as `8d16508` (on `main`, **not yet pushed**).
 
 ## Open items / next steps
 
-1. **Verify the app against real data (next chunk).** Install nicegui (`pip install -e ".[dev]"`),
-   launch `python -m literature_labeller.main`, label a few of the 15k entries, edit one via
-   ArrowLeft, exit, and confirm the CSV export + `label_events` history. Confirm short-acronym
-   case-sensitivity and `;`-synonym splitting on live abstracts.
-2. **Commit the reconciliation changes** (config.yaml, data.py, make_sample.py, tests/test_data.py,
-   .gitignore, CLAUDE.md) — not yet committed as of this session.
+1. **Push `main`** to origin (commit `8d16508` is local-only).
+2. **Highlighter case-sensitivity divergence.** `highlight.py` is fully case-insensitive
+   (`re.IGNORECASE`, `MIN_TERM_LENGTH=3`), which satisfies `INSTRUCTIONS.md` but NOT the "Key
+   decisions" claim that short acronyms (≤4 chars, e.g. `DEET`) match case-sensitively. Decide:
+   implement the case-sensitive-short-acronym rule (+ tests), or update the Key decisions note.
 3. **INSTRUCTIONS.md Stage 3** still names the historical `data/pubmed_sample_with_keywords.cs`
    path; it is the original spec, superseded by the TSV decision above. Leave as-is or annotate.
+
+Resolved: removed the unused `store.get_prev()` and its test (2026-08-26); `edit_previous()`
+uses `index − 1`, which satisfies the spec and lets ← walk further back.

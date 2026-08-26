@@ -33,14 +33,6 @@ def test_upsert_overwrites(tmp_path):
     store.close()
 
 
-def test_get_prev_returns_latest(tmp_path):
-    store = LabelStore(tmp_path / "labels.db")
-    store.upsert_label("1", 0, "negative", "s1", when=datetime(2026, 1, 1, 10, 0))
-    store.upsert_label("2", 1, "human_animal", "s1", when=datetime(2026, 1, 1, 11, 0))
-    assert store.get_prev() == "2"
-    store.close()
-
-
 def test_labelled_pmids(tmp_path):
     store = LabelStore(tmp_path / "labels.db")
     store.upsert_label("2", 1, "human_animal", "s1")
