@@ -5,20 +5,22 @@ import pytest
 from literature_labeller.data import DataError, load_dataset, load_keyword_terms
 
 
-def _write_csv(path, fieldnames, rows):
+def _write_csv(path, fieldnames, rows, delimiter=","):
     with path.open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, delimiter=delimiter)
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
 
 
 def test_load_dataset_ok(tmp_path):
-    p = tmp_path / "ds.csv"
+    # The dataset is tab-separated.
+    p = tmp_path / "ds.txt"
     _write_csv(
         p,
         ["pmid", "title", "abstract", "journal"],
         [{"pmid": "1", "title": "t", "abstract": "a", "journal": "J"}],
+        delimiter="\t",
     )
     ds = load_dataset(p)
     assert len(ds) == 1
@@ -27,8 +29,8 @@ def test_load_dataset_ok(tmp_path):
 
 
 def test_load_dataset_missing_column(tmp_path):
-    p = tmp_path / "ds.csv"
-    _write_csv(p, ["pmid", "title"], [{"pmid": "1", "title": "t"}])
+    p = tmp_path / "ds.txt"
+    _write_csv(p, ["pmid", "title"], [{"pmid": "1", "title": "t"}], delimiter="\t")
     with pytest.raises(DataError, match="abstract"):
         load_dataset(p)
 

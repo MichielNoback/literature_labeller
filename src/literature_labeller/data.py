@@ -25,11 +25,14 @@ class Dataset:
         return len(self.rows)
 
 
-def _read_csv(path: Path, required: tuple[str, ...]) -> tuple[list[str], list[dict[str, str]]]:
+def _read_csv(
+    path: Path, required: tuple[str, ...], delimiter: str = ","
+) -> tuple[list[str], list[dict[str, str]]]:
     if not path.is_file():
         raise DataError(f"File not found: {path}")
     with path.open("r", encoding="utf-8", newline="") as fh:
-        reader = csv.DictReader(fh)
+        # The PubMed corpus is tab-separated; the keywords file is comma-separated.
+        reader = csv.DictReader(fh, delimiter=delimiter)
         fieldnames = reader.fieldnames or []
         missing = [c for c in required if c not in fieldnames]
         if missing:
@@ -42,14 +45,14 @@ def _read_csv(path: Path, required: tuple[str, ...]) -> tuple[list[str], list[di
 
 
 def load_dataset(path: str | Path) -> Dataset:
-    """Load the PubMed dataset; requires pmid/title/abstract, preserves all other columns."""
-    fieldnames, rows = _read_csv(Path(path), REQUIRED_DATASET_COLUMNS)
+    """Load the tab-separated PubMed dataset; requires pmid/title/abstract, preserves all other columns."""
+    fieldnames, rows = _read_csv(Path(path), REQUIRED_DATASET_COLUMNS, delimiter="\t")
     return Dataset(fieldnames=fieldnames, rows=rows)
 
 
 def load_keyword_terms(path: str | Path) -> list[str]:
-    """Return every distinct keyword term (names + `;`-separated synonyms) from the file."""
-    _, rows = _read_csv(Path(path), REQUIRED_KEYWORD_COLUMNS)
+    """Return every distinct keyword term (names + `;`-separated synonyms) from the comma-separated file."""
+    _, rows = _read_csv(Path(path), REQUIRED_KEYWORD_COLUMNS, delimiter=",")
     terms: list[str] = []
     seen: set[str] = set()
     for row in rows:
