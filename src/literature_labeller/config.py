@@ -19,6 +19,25 @@ class Label:
     display: str
 
 
+# Generic default contact used in the Wikipedia User-Agent when none is configured.
+DEFAULT_CONTACT = "https://github.com/MichielNoback/literature_labeller"
+
+
+@dataclass(frozen=True)
+class LookupConfig:
+    """Settings for the Quick Lookup feature (all optional, sensibly defaulted)."""
+
+    compendium_base_url: str = "http://www.bcpcpesticidecompendium.org/"
+    wikipedia_lookup: bool = True
+    wikipedia_lang: str = "en"
+    contact_email: str = ""
+
+    @property
+    def contact(self) -> str:
+        """Contact string for the Wikipedia User-Agent (configured email or generic URL)."""
+        return self.contact_email.strip() or DEFAULT_CONTACT
+
+
 @dataclass(frozen=True)
 class Config:
     dataset_path: Path
@@ -26,6 +45,7 @@ class Config:
     output_csv: Path
     db_path: Path
     labels: tuple[Label, ...]
+    lookup: LookupConfig = LookupConfig()
 
     @property
     def hotkeys(self) -> dict[str, Label]:
@@ -64,6 +84,7 @@ def load_config(path: str | Path) -> Config:
     db_path = resolve("db_path")
 
     labels = _parse_labels(raw.get("labels"))
+    lookup = _parse_lookup(raw.get("lookup"))
 
     return Config(
         dataset_path=dataset_path,
@@ -71,6 +92,22 @@ def load_config(path: str | Path) -> Config:
         output_csv=output_csv,
         db_path=db_path,
         labels=labels,
+        lookup=lookup,
+    )
+
+
+def _parse_lookup(raw_lookup: object) -> LookupConfig:
+    """Parse the optional ``lookup:`` block, falling back to defaults for missing keys."""
+    if raw_lookup is None:
+        return LookupConfig()
+    if not isinstance(raw_lookup, dict):
+        raise ConfigError("Config 'lookup' must be a mapping.")
+    defaults = LookupConfig()
+    return LookupConfig(
+        compendium_base_url=str(raw_lookup.get("compendium_base_url", defaults.compendium_base_url)),
+        wikipedia_lookup=bool(raw_lookup.get("wikipedia_lookup", defaults.wikipedia_lookup)),
+        wikipedia_lang=str(raw_lookup.get("wikipedia_lang", defaults.wikipedia_lang)),
+        contact_email=str(raw_lookup.get("contact_email", defaults.contact_email)),
     )
 
 

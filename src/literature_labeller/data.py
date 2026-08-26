@@ -50,6 +50,16 @@ def load_dataset(path: str | Path) -> Dataset:
     return Dataset(fieldnames=fieldnames, rows=rows)
 
 
+def load_keyword_records(path: str | Path) -> list[dict[str, str]]:
+    """Return the full keyword rows (all columns) from the comma-separated file.
+
+    Used by Quick Lookup to show compound details; ``load_keyword_terms`` remains the
+    lighter call used for highlighting.
+    """
+    _, rows = _read_csv(Path(path), REQUIRED_KEYWORD_COLUMNS, delimiter=",")
+    return rows
+
+
 def load_keyword_terms(path: str | Path) -> list[str]:
     """Return every distinct keyword term (names + `;`-separated synonyms) from the comma-separated file."""
     _, rows = _read_csv(Path(path), REQUIRED_KEYWORD_COLUMNS, delimiter=",")
