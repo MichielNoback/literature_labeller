@@ -34,6 +34,8 @@ class LabellerUI:
         self.store = store
         self.session = session
         self.index = self._first_unlabelled()
+        # Skip uses the first digit not already claimed by a label (0-4 -> 5).
+        self.skip_key = self._first_free_digit()
 
         # Widgets populated in build().
         self._progress: ui.label | None = None
@@ -56,9 +58,24 @@ class LabellerUI:
     def current_row(self) -> dict[str, str]:
         return self.dataset.rows[self.index]
 
+    def _first_free_digit(self) -> int | None:
+        """Return the lowest 0-9 digit not used as a label hotkey, for Skip."""
+        used = self.config.hotkeys_ids
+        for digit in range(10):
+            if digit not in used:
+                return digit
+        return None
+
     def _goto(self, index: int) -> None:
         self.index = max(0, min(index, len(self.dataset.rows) - 1))
         self._refresh()
+
+    def _advance(self) -> None:
+        """Move to the next entry, or just refresh if already at the end."""
+        if self.index < len(self.dataset.rows) - 1:
+            self._goto(self.index + 1)
+        else:
+            self._refresh()
 
     # -- actions ------------------------------------------------------------
 
@@ -73,11 +90,11 @@ class LabellerUI:
             label_name=label.name,
             session=self.session,
         )
-        # Advance to the next entry unless we are at the end.
-        if self.index < len(self.dataset.rows) - 1:
-            self._goto(self.index + 1)
-        else:
-            self._refresh()
+        self._advance()
+
+    def skip_entry(self) -> None:
+        """Advance to the next entry without recording a label."""
+        self._advance()
 
     def edit_previous(self) -> None:
         """Left-arrow: reopen the previous entry for re-labelling."""
@@ -96,12 +113,48 @@ class LabellerUI:
 
     # -- rendering ----------------------------------------------------------
 
+    def _help_markdown(self) -> str:
+        """Build the Help dialog content from the current label configuration."""
+        label_lines = "\n".join(
+            f"- `{lbl.id}` — apply **{lbl.display}** and advance" for lbl in self.config.labels
+        )
+        skip_line = (
+            f"- `{self.skip_key}` — **Skip** this entry (advance without labelling)\n"
+            if self.skip_key is not None
+            else ""
+        )
+        return (
+            "### Literature Labeller — Help\n\n"
+            "**Keyboard shortcuts**\n\n"
+            f"{label_lines}\n"
+            f"{skip_line}"
+            "- `←` (Left Arrow) — reopen the previous entry to correct its label\n"
+            "- **Exit** button — export the CSV and quit\n\n"
+            "**Correcting a mistake**\n\n"
+            "Press `←` to reopen the entry you want to change, then press the correct "
+            "number key. The new label overwrites the old one (last decision wins). "
+            "There is no blank/un-label — you replace one label with another.\n\n"
+            "**Your labels are safe**\n\n"
+            "Every label is saved to the database the moment you press a key. If the app "
+            "closes unexpectedly, nothing is lost — on restart you resume at the first "
+            "unlabelled entry. The CSV file is written only when you press **Exit**; it is "
+            "a regenerable snapshot of the database (the database is the source of truth)."
+        )
+
     def build(self) -> None:
         ui.add_head_html(MARK_CSS)
+
+        # Help modal, opened from the Help button in the header.
+        with ui.dialog() as help_dialog, ui.card().classes("max-w-lg"):
+            ui.markdown(self._help_markdown())
+            ui.button("Close", on_click=help_dialog.close).props("flat")
+
         with ui.column().classes("w-full max-w-3xl mx-auto gap-3 p-4"):
             with ui.row().classes("w-full items-center justify-between"):
                 self._progress = ui.label().classes("text-sm text-gray-500")
-                ui.button("Exit", on_click=self.exit_session, color="negative")
+                with ui.row().classes("items-center gap-2"):
+                    ui.button("Help", on_click=help_dialog.open).props("outline")
+                    ui.button("Exit", on_click=self.exit_session, color="negative")
 
             with ui.card().classes("w-full"):
                 self._pmid = ui.label().classes("text-sm text-gray-500")
@@ -118,10 +171,17 @@ class LabellerUI:
                         on_click=lambda _=None, lid=label.id: self.apply_label(lid),
                     )
                     self._label_buttons[label.id] = btn
+                # Skip advances without labelling; it is not a config label.
+                if self.skip_key is not None:
+                    ui.button(
+                        f"[{self.skip_key}] Skip",
+                        on_click=lambda _=None: self.skip_entry(),
+                    ).props("color=grey-5")
 
-            ui.label("Keys 0-4 label · ← re-edit previous entry").classes(
-                "text-xs text-gray-400"
-            )
+            skip_hint = f"[{self.skip_key}] skip · " if self.skip_key is not None else ""
+            ui.label(
+                f"Keys label & advance · {skip_hint}← re-edit previous · Help for details"
+            ).classes("text-xs text-gray-400")
 
         ui.keyboard(on_key=self._on_key)
         self._refresh()
@@ -132,8 +192,11 @@ class LabellerUI:
         if e.key.arrow_left:
             self.edit_previous()
             return
-        if e.key.number is not None and e.key.number in self.config.hotkeys_ids:
-            self.apply_label(e.key.number)
+        if e.key.number is not None:
+            if e.key.number in self.config.hotkeys_ids:
+                self.apply_label(e.key.number)
+            elif self.skip_key is not None and e.key.number == self.skip_key:
+                self.skip_entry()
 
     def _refresh(self) -> None:
         row = self.current_row
