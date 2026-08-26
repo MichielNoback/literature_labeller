@@ -18,6 +18,9 @@ opens in your browser, but all data stays on your machine.
 - **Skip** — press the next free digit after your labels (e.g. `5`) or click **Skip**
   to advance without labelling the current entry.
 - **Edit-previous** — press **←** (ArrowLeft) to reopen the last entry and relabel it.
+- **Quick Lookup** — select a word/phrase and press **`q`** (or click **🔍 Look up**) for a
+  reference card: pesticide terms link to the BCPC Compendium; anything else falls back to a
+  Wikipedia summary.
 - **In-app Help** — a **Help** button opens a modal summarising the shortcuts and how
   labels are saved/recovered.
 - **Keyword highlighting** — terms from a keywords file are highlighted in the title
@@ -108,6 +111,7 @@ python scripts/make_synthetic.py     # writes data/pubmed_sample_with_keywords.c
 | Press `0`–`4` (or click a label button) | Assigns that label to the current entry and advances |
 | Press `5` (or click **Skip**) | Advances **without** labelling — the entry stays unlabelled |
 | Press **←** (ArrowLeft) | Reopens the previous entry; its current label is shown and can be overwritten |
+| Select text + press **`q`** (or click **🔍 Look up**) | Opens a Quick Lookup card for the selection (see below) |
 | Click **Help** | Opens a modal with the shortcuts and data-safety notes |
 | Click **Exit** | Exports the cumulative CSV and shuts the server down |
 
@@ -179,6 +183,39 @@ on each Exit; deleting it is harmless. The input dataset file is never written t
 
 ---
 
+## Quick Lookup
+
+Select a word or phrase in the title or abstract and press **`q`** (or click **🔍 Look up**).
+A modal shows a reference card:
+
+1. **Pesticide term** — if the selection matches a term (or synonym) in the keywords file,
+   its details (formula, activity, compound groups, IUPAC name, CAS number, notes) are shown
+   with a **View on BCPC Compendium ↗** link. This is fully local — no network access.
+2. **Wikipedia** — otherwise, a Wikipedia summary is fetched (title, first paragraph,
+   thumbnail, and a **Read on Wikipedia ↗** link). Matching tries the exact title first,
+   then a search fallback.
+
+Matching is case-insensitive and hyphen/space-tolerant, exactly like the highlighter.
+
+Configuration lives under `lookup:` in `config.yaml`:
+
+```yaml
+lookup:
+  compendium_base_url: http://www.bcpcpesticidecompendium.org/
+  wikipedia_lookup: true     # set false to disable ALL outbound network calls
+  wikipedia_lang: en
+  contact_email: ""          # optional; identifies your traffic to Wikipedia
+```
+
+**Privacy / network note.** The Wikipedia fallback is the only outbound network call the app
+makes; it sends the selected text to `wikipedia.org`. Set `wikipedia_lookup: false` to keep
+the app fully offline (keyword lookups still work). The request carries a `User-Agent` of
+`literature-labeller/0.1 (+<contact>)`, where `<contact>` is `contact_email` if set, otherwise
+the generic repository URL. `config.yaml` is tracked in git — leave `contact_email` blank
+unless you are comfortable publishing the address.
+
+---
+
 ## Data safety, correcting mistakes & recovery
 
 **Every label is saved instantly.** Each keypress commits the decision to `labels.db`
@@ -217,12 +254,12 @@ one overwrites the old. Notes on the current behaviour:
 ## Testing
 
 ```bash
-pytest            # 18 unit tests over config/data/highlight/store
+pytest            # 31 unit tests over data/highlight/store/lookup
 ```
 
-The suite covers config validation, TSV/CSV reading and column checks, keyword-term
-extraction, highlighting behaviour, SQLite upsert/overwrite, cumulative export, and
-column preservation.
+The suite covers TSV/CSV reading and column checks, keyword-term extraction, highlighting
+behaviour, SQLite upsert/overwrite, cumulative export, column preservation, the pesticide-term
+lookup index, and the Wikipedia fallback (with mocked HTTP — no network in tests).
 
 ---
 
@@ -241,10 +278,11 @@ literature_labeler/
 │   ├── config.py               # load/validate config.yaml -> Config
 │   ├── data.py                 # read dataset (TSV) + keyword terms (CSV); verify columns
 │   ├── highlight.py            # Highlighter: regex highlight of keyword terms
+│   ├── lookup.py               # CompoundIndex + Wikipedia summary for Quick Lookup
 │   ├── store.py                # LabelStore: SQLite persistence + CSV export
-│   ├── app.py                  # LabellerUI: NiceGUI page, key bindings, edit-previous
+│   ├── app.py                  # LabellerUI: NiceGUI page, key bindings, edit-previous, lookup
 │   └── main.py                 # entry point: wires config -> data -> store -> UI
-└── tests/                      # test_data.py, test_highlight.py, test_store.py
+└── tests/                      # test_data.py, test_highlight.py, test_store.py, test_lookup.py
 ```
 
 ---
