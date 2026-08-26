@@ -114,6 +114,10 @@ class LabellerUI:
         """Left-arrow: reopen the previous entry for re-labelling."""
         self._goto(self.index - 1)
 
+    def move_next(self) -> None:
+        """Right-arrow: move forward one entry without labelling."""
+        self._goto(self.index + 1)
+
     # -- quick lookup -------------------------------------------------------
 
     async def quick_lookup(self) -> None:
@@ -242,6 +246,7 @@ class LabellerUI:
             f"{label_lines}\n"
             f"{skip_line}"
             "- `←` (Left Arrow) — reopen the previous entry to correct its label\n"
+            "- `→` (Right Arrow) — move forward one entry without labelling\n"
             "- select a word/phrase, then `q` (or the 🔍 Look up button) — quick reference lookup\n"
             "- **Exit** button — export the CSV and quit\n\n"
             "**Quick Lookup**\n\n"
@@ -304,7 +309,7 @@ class LabellerUI:
 
             skip_hint = f"[{self.skip_key}] skip · " if self.skip_key is not None else ""
             ui.label(
-                f"Keys label & advance · {skip_hint}← re-edit previous · "
+                f"Keys label & advance · {skip_hint}← back · → forward · "
                 "select text + q to look up · Help for details"
             ).classes("text-xs text-gray-400")
 
@@ -316,6 +321,9 @@ class LabellerUI:
             return
         if e.key.arrow_left:
             self.edit_previous()
+            return
+        if e.key.arrow_right:
+            self.move_next()
             return
         if str(e.key.name).lower() == "q":
             await self.quick_lookup()

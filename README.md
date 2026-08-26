@@ -111,6 +111,7 @@ python scripts/make_synthetic.py     # writes data/pubmed_sample_with_keywords.c
 | Press `0`–`4` (or click a label button) | Assigns that label to the current entry and advances |
 | Press `5` (or click **Skip**) | Advances **without** labelling — the entry stays unlabelled |
 | Press **←** (ArrowLeft) | Reopens the previous entry; its current label is shown and can be overwritten |
+| Press **→** (ArrowRight) | Moves forward one entry without labelling |
 | Select text + press **`q`** (or click **🔍 Look up**) | Opens a Quick Lookup card for the selection (see below) |
 | Click **Help** | Opens a modal with the shortcuts and data-safety notes |
 | Click **Exit** | Exports the cumulative CSV and shuts the server down |
