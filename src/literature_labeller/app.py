@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from nicegui import app, ui
 
+from . import lookup
 from .config import Config
 from .data import Dataset
 from .highlight import Highlighter
+from .lookup import CompoundIndex
 from .store import LabelStore
+
+# Selections longer than this (chars or words) are rejected as not word/phrase lookups.
+MAX_LOOKUP_CHARS = 60
+MAX_LOOKUP_WORDS = 6
+# Compound Notes longer than this are collapsed into a "show more" expansion.
+NOTES_PREVIEW_CHARS = 300
 
 MARK_CSS = """
 <style>
@@ -27,12 +37,14 @@ class LabellerUI:
         highlighter: Highlighter,
         store: LabelStore,
         session: str,
+        compound_index: CompoundIndex,
     ):
         self.config = config
         self.dataset = dataset
         self.highlighter = highlighter
         self.store = store
         self.session = session
+        self.compound_index = compound_index
         self.index = self._first_unlabelled()
         # Skip uses the first digit not already claimed by a label (0-4 -> 5).
         self.skip_key = self._first_free_digit()
@@ -44,6 +56,8 @@ class LabellerUI:
         self._abstract: ui.html | None = None
         self._status: ui.label | None = None
         self._label_buttons: dict[int, ui.button] = {}
+        self._lookup_dialog: ui.dialog | None = None
+        self._lookup_body: ui.column | None = None
 
     # -- navigation state ---------------------------------------------------
 
@@ -100,6 +114,105 @@ class LabellerUI:
         """Left-arrow: reopen the previous entry for re-labelling."""
         self._goto(self.index - 1)
 
+    # -- quick lookup -------------------------------------------------------
+
+    async def quick_lookup(self) -> None:
+        """Read the current text selection and show a reference card for it."""
+        raw = await ui.run_javascript(
+            "window.getSelection ? window.getSelection().toString() : ''"
+        )
+        text = lookup.clean_selection(raw or "")
+        if not text:
+            ui.notify("Select a word or phrase in the text first.", type="info")
+            return
+        if len(text) > MAX_LOOKUP_CHARS or len(text.split()) > MAX_LOOKUP_WORDS:
+            self._render_message("Select a shorter word or phrase.")
+            return
+
+        # 1. Local pesticide-term match takes priority (no network).
+        record = self.compound_index.get(text)
+        if record is not None:
+            self._render_compound(record)
+            return
+
+        # 2. Fall back to Wikipedia if enabled.
+        if not self.config.lookup.wikipedia_lookup:
+            self._render_message(f"“{text}” is not a known pesticide term.")
+            return
+
+        self._render_loading(text)  # opens the dialog with a spinner
+        result = await asyncio.to_thread(
+            lookup.wikipedia_summary,
+            text,
+            lang=self.config.lookup.wikipedia_lang,
+            contact=self.config.lookup.contact,
+        )
+        self._render_wiki(text, result)  # repopulates the already-open dialog
+
+    def _lookup_reset(self):
+        """Clear the lookup modal body and return it as a context manager."""
+        self._lookup_body.clear()
+        return self._lookup_body
+
+    def _render_message(self, message: str) -> None:
+        with self._lookup_reset():
+            ui.label(message)
+        self._lookup_dialog.open()
+
+    def _render_loading(self, text: str) -> None:
+        with self._lookup_reset():
+            with ui.row().classes("items-center gap-2"):
+                ui.spinner(size="sm")
+                ui.label(f"Looking up “{text}” on Wikipedia…")
+        self._lookup_dialog.open()
+
+    def _render_compound(self, record: dict) -> None:
+        with self._lookup_reset():
+            ui.badge("Pesticide term").props("color=green")
+            ui.label(record.get("name", "")).classes("text-lg font-bold")
+
+            def field(label: str, value) -> None:
+                text = "" if value is None else str(value).strip()
+                if text:
+                    with ui.row().classes("gap-1 items-start"):
+                        ui.label(f"{label}:").classes("font-semibold whitespace-nowrap")
+                        ui.label(text)
+
+            synonyms = (record.get("synonyms") or "").replace(";", ", ").strip(", ")
+            field("Synonyms", synonyms)
+            field("Formula", record.get("Formula"))
+            field("Activity", record.get("Activity"))
+            field("Compound groups", record.get("Compound_groups"))
+            field("IUPAC name", record.get("IUPAC name") or record.get("IUPAC Name"))
+            field("CAS Reg No", record.get("CAS Reg No"))
+
+            notes = (record.get("Notes") or "").strip()
+            if notes and len(notes) <= NOTES_PREVIEW_CHARS:
+                field("Notes", notes)
+            elif notes:
+                with ui.expansion("Notes").classes("w-full"):
+                    ui.label(notes)
+
+            link = lookup.compendium_link(record, self.config.lookup.compendium_base_url)
+            if link:
+                ui.link("View on BCPC Compendium ↗", link, new_tab=True)
+        self._lookup_dialog.open()
+
+    def _render_wiki(self, text: str, result: lookup.WikiResult) -> None:
+        with self._lookup_reset():
+            ui.badge("Wikipedia").props("color=blue")
+            if result.status == "found":
+                ui.label(result.title).classes("text-lg font-bold")
+                if result.thumbnail:
+                    ui.image(result.thumbnail).classes("max-w-[160px] rounded")
+                if result.extract:
+                    ui.label(result.extract)
+                if result.url:
+                    ui.link("Read on Wikipedia ↗", result.url, new_tab=True)
+            else:
+                ui.label(result.message or f"No result for “{text}”.")
+        self._lookup_dialog.open()
+
     def exit_session(self) -> None:
         written = self.store.export_csv(self.dataset, self.config.output_csv)
         self.store.close()
@@ -129,7 +242,12 @@ class LabellerUI:
             f"{label_lines}\n"
             f"{skip_line}"
             "- `←` (Left Arrow) — reopen the previous entry to correct its label\n"
+            "- select a word/phrase, then `q` (or the 🔍 Look up button) — quick reference lookup\n"
             "- **Exit** button — export the CSV and quit\n\n"
+            "**Quick Lookup**\n\n"
+            "Select a word or phrase in the title/abstract and press `q`. If it is a "
+            "pesticide term, its details and a link to the BCPC Compendium are shown; "
+            "otherwise a Wikipedia summary is shown (if enabled in the config).\n\n"
             "**Correcting a mistake**\n\n"
             "Press `←` to reopen the entry you want to change, then press the correct "
             "number key. The new label overwrites the old one (last decision wins). "
@@ -149,10 +267,16 @@ class LabellerUI:
             ui.markdown(self._help_markdown())
             ui.button("Close", on_click=help_dialog.close).props("flat")
 
+        # Quick Lookup modal — its body is cleared and repopulated per lookup.
+        with ui.dialog() as self._lookup_dialog, ui.card().classes("max-w-lg w-full"):
+            self._lookup_body = ui.column().classes("w-full gap-2")
+            ui.button("Close", on_click=self._lookup_dialog.close).props("flat")
+
         with ui.column().classes("w-full max-w-3xl mx-auto gap-3 p-4"):
             with ui.row().classes("w-full items-center justify-between"):
                 self._progress = ui.label().classes("text-sm text-gray-500")
                 with ui.row().classes("items-center gap-2"):
+                    ui.button("🔍 Look up", on_click=self.quick_lookup).props("outline")
                     ui.button("Help", on_click=help_dialog.open).props("outline")
                     ui.button("Exit", on_click=self.exit_session, color="negative")
 
@@ -180,17 +304,21 @@ class LabellerUI:
 
             skip_hint = f"[{self.skip_key}] skip · " if self.skip_key is not None else ""
             ui.label(
-                f"Keys label & advance · {skip_hint}← re-edit previous · Help for details"
+                f"Keys label & advance · {skip_hint}← re-edit previous · "
+                "select text + q to look up · Help for details"
             ).classes("text-xs text-gray-400")
 
         ui.keyboard(on_key=self._on_key)
         self._refresh()
 
-    def _on_key(self, e) -> None:
+    async def _on_key(self, e) -> None:
         if not e.action.keydown or e.action.repeat:
             return
         if e.key.arrow_left:
             self.edit_previous()
+            return
+        if str(e.key.name).lower() == "q":
+            await self.quick_lookup()
             return
         if e.key.number is not None:
             if e.key.number in self.config.hotkeys_ids:

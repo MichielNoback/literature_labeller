@@ -10,8 +10,9 @@ from nicegui import ui
 
 from .app import LabellerUI
 from .config import load_config
-from .data import load_dataset, load_keyword_terms
+from .data import load_dataset, load_keyword_records, load_keyword_terms
 from .highlight import Highlighter
+from .lookup import CompoundIndex
 from .store import LabelStore
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
@@ -20,11 +21,13 @@ DEFAULT_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 def _build(config_path: str | Path) -> LabellerUI:
     config = load_config(config_path)
     dataset = load_dataset(config.dataset_path)
+    records = load_keyword_records(config.keywords_path)
     terms = load_keyword_terms(config.keywords_path)
     highlighter = Highlighter(terms)
+    compound_index = CompoundIndex(records)
     store = LabelStore(config.db_path)
     session = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-    return LabellerUI(config, dataset, highlighter, store, session)
+    return LabellerUI(config, dataset, highlighter, store, session, compound_index)
 
 
 def cli() -> None:

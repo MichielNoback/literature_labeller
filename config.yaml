@@ -6,6 +6,15 @@ keywords_path: data/PESTICIDE_TERMS_20260323_with_compound_data.csv
 output_csv: data/pubmed_labels.csv
 db_path: data/labels.db
 
+# Quick Lookup: select a word/phrase in the text and press `q` (or click Look up).
+lookup:
+  compendium_base_url: http://www.bcpcpesticidecompendium.org/
+  wikipedia_lookup: true          # set false to disable all outbound network calls
+  wikipedia_lang: en
+  contact_email: ""               # optional; identifies your traffic to Wikipedia.
+                                  # NOTE: config.yaml is tracked in git — leave blank
+                                  # unless you are comfortable publishing the address.
+
 # Labels the annotator can assign. `id` doubles as the keyboard shortcut (0-9).
 labels:
   - {id: 0, name: negative,      display: Negative}
