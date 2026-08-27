@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import urllib.error
@@ -17,6 +18,35 @@ _WS_HYPHEN = re.compile(r"[-\s]+")
 # Characters trimmed from the ends of a raw selection (quotes + sentence punctuation).
 # Chemical names keep interior commas/parentheses; only the ends are cleaned.
 _TRIM_CHARS = " \t\r\n\"'“”‘’.,;:!?"
+
+
+# Several compendium columns store a Python collection literal rather than plain text,
+# e.g. Compound_groups = "{'alkyl halide', 'fumigant'}".
+_COLLECTION_REPR = re.compile(r"^[\{\[\(].*[\}\]\)]$", re.DOTALL)
+
+
+def format_field(value: object) -> str:
+    """Render a compendium field for display, unwrapping Python collection reprs.
+
+    Roughly 93% of ``Compound_groups`` and ``Primary_activities`` values are stored as a
+    literal ``set`` repr; show their members as a comma-separated list instead. Sets are
+    sorted (a set repr has no meaningful order, and Python's is not stable across runs);
+    anything that does not parse is shown unchanged.
+    """
+    text = "" if value is None else str(value).strip()
+    if not _COLLECTION_REPR.match(text):
+        return text
+    try:
+        parsed = ast.literal_eval(text)
+    except (ValueError, SyntaxError):
+        return text  # looked like a literal but is not one
+    if isinstance(parsed, (set, frozenset)):
+        members = sorted(str(m).strip() for m in parsed)
+    elif isinstance(parsed, (list, tuple)):
+        members = [str(m).strip() for m in parsed]
+    else:
+        return text  # a dict or scalar: not a member list
+    return ", ".join(m for m in members if m)
 
 
 def normalize_term(text: str) -> str:

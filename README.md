@@ -285,13 +285,13 @@ one overwrites the old. Notes on the current behaviour:
 ## Testing
 
 ```bash
-pytest            # 40 unit tests over data/highlight/store/lookup
+pytest            # 46 unit tests over data/highlight/store/lookup
 ```
 
 The suite covers TSV/CSV reading and column checks, keyword-term extraction, highlighting
 behaviour, SQLite upsert/overwrite, cumulative export, column preservation, the pesticide-term
-lookup index, canonical-name query resolution, the session cache, and the Wikipedia lookup
-including its relevance guard (with mocked HTTP — no network in tests).
+lookup index, canonical-name query resolution, the session cache, compendium-field formatting,
+and the Wikipedia lookup including its relevance guard (with mocked HTTP — no network in tests).
 
 ---
 

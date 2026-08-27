@@ -4,6 +4,7 @@ from literature_labeller.lookup import (
     NetworkError,
     clean_selection,
     compendium_link,
+    format_field,
     normalize_term,
     resolve_summary,
     wikipedia_summary,
@@ -259,3 +260,35 @@ def test_search_fallback_accepts_article_naming_the_query():
     r = wikipedia_summary("mercuric chloride", fetcher=fetcher)
     assert r.status == "found"
     assert r.title == "Mercury(II) chloride"
+
+
+# --- compendium field formatting -------------------------------------------
+
+def test_format_field_unwraps_single_member_set_repr():
+    assert format_field("{'glycine derivative'}") == "glycine derivative"
+
+
+def test_format_field_unwraps_multi_member_set_repr_deterministically():
+    # Sets have no meaningful order, so members are sorted for a stable display.
+    assert format_field("{'alkyl halide', 'fumigant'}") == "alkyl halide, fumigant"
+    assert format_field("{'fumigant', 'alkyl halide'}") == "alkyl halide, fumigant"
+
+
+def test_format_field_preserves_list_order():
+    assert format_field("['fumigant', 'alkyl halide']") == "fumigant, alkyl halide"
+
+
+def test_format_field_leaves_plain_text_alone():
+    assert format_field("herbicides (glycine derivative)") == "herbicides (glycine derivative)"
+    assert format_field("  padded  ") == "padded"
+
+
+def test_format_field_handles_blank_and_none():
+    assert format_field("") == ""
+    assert format_field(None) == ""
+
+
+def test_format_field_falls_back_on_unparseable_input():
+    # Looks like a literal but is not one: show it rather than dropping it.
+    assert format_field("{broken") == "{broken"
+    assert format_field("{'a': 1}") == "{'a': 1}"

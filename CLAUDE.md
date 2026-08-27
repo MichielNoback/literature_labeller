@@ -32,7 +32,7 @@ no requests/httpx).
 | `main.py` | Entry point: wires config→data→highlighter→CompoundIndex→store→UI, `ui.run` |
 | `scripts/make_sample.py` | Stage 1: sample 15k abstract-bearing rows from the real tab-separated corpus |
 | `scripts/make_synthetic.py` | Generate a small synthetic CSV for dev/testing |
-| `tests/` | `test_data.py`, `test_highlight.py`, `test_store.py`, `test_lookup.py` (40 tests) |
+| `tests/` | `test_data.py`, `test_highlight.py`, `test_store.py`, `test_lookup.py` (46 tests) |
 
 ### Run / test
 
@@ -43,7 +43,7 @@ settings allow `Bash(.venv/bin/python:*)`):
 ```bash
 .venv/bin/python scripts/make_sample.py        # build the real 15k TSV sample (once)
 .venv/bin/python -m literature_labeller.main    # serves http://127.0.0.1:8080
-.venv/bin/python -m pytest -q                   # 40 tests
+.venv/bin/python -m pytest -q                   # 46 tests
 # console script also works after `pip install -e .`:  literature-labeller
 ```
 
@@ -84,7 +84,7 @@ Exit exports the CSV.
 
 - Repo bootstrapped; large corpora gitignored (only the 1.1 MB pesticide-terms CSV tracked).
   Remote `origin` = github.com/MichielNoback/literature_labeller.
-- **40/40 tests pass.** **Uncommitted** (2026-08-27): the Wikipedia-first lookup change
+- **46/46 tests pass.** **Uncommitted** (2026-08-27): the Wikipedia-first lookup change
   (`lookup.py`, `app.py`, `tests/test_lookup.py`) plus `README.md`, `SPECIFICATIONS.md`,
   `CLAUDE.md` and an earlier `INSTRUCTIONS.md` session-name tweak. Nothing pushed yet.
 - Verified live (Playwright, nicegui 3.16) against a 4-row scratch dataset with its own
@@ -108,11 +108,10 @@ Exit exports the CSV.
 3. **INSTRUCTIONS.md Stage 3** still names the historical `data/pubmed_sample_with_keywords.cs`
    path (superseded by the TSV decision). Cosmetic — leave or annotate.
 
-4. **`Compound_groups` holds a Python set repr** in the source CSV (renders as
-   `{'glycine derivative'}` in the Compendium data expansion). Pre-existing data-quality
-   wart, now visible in the UI. Cosmetic strip would be a one-liner in `_compound_fields`.
-
-Resolved 2026-08-27: Quick Lookup made Wikipedia-first for pesticide compounds (canonical-name
+Resolved 2026-08-27: `lookup.format_field()` unwraps the Python set reprs the source CSV
+stores in `Compound_groups`/`Primary_activities` (3568 fields cleaned corpus-wide, 0 mangled;
+the 13 IUPAC names that legitimately use braces fall through `ast.literal_eval` untouched);
+Quick Lookup made Wikipedia-first for pesticide compounds (canonical-name
 query resolution, collapsed Compendium data, session cache, search-fallback relevance guard);
 README + SPECIFICATIONS updated to match.
 Resolved earlier: TSV reconciliation + empty-abstract exclusion; removed unused

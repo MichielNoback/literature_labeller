@@ -179,7 +179,7 @@ class LabellerUI:
         """Render the static compendium fields of a record; blank fields are omitted."""
 
         def field(label: str, value) -> None:
-            text = "" if value is None else str(value).strip()
+            text = lookup.format_field(value)
             if text:
                 with ui.row().classes("gap-1 items-start"):
                     ui.label(f"{label}:").classes("font-semibold whitespace-nowrap")
