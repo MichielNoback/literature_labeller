@@ -14,6 +14,9 @@ SQLite and export to CSV.
 - **Early design/data findings:** the plan file `~/.claude/plans/dapper-honking-wadler.md`.
 - The app is **feature-complete for the core workflow, fully tested, verified live, and
   pushed** to `origin/main`. See Open items for the few remaining decisions.
+- Quick Lookup was reworked to be **Wikipedia-first** on 2026-08-27; the rationale, the
+  decisions taken and their cost are recorded in `SPECIFICATIONS.md` §10 — read that before
+  changing lookup behaviour, rather than re-deriving it from the code.
 
 ## Architecture
 
@@ -84,10 +87,12 @@ Exit exports the CSV.
 
 - Repo bootstrapped; large corpora gitignored (only the 1.1 MB pesticide-terms CSV tracked).
   Remote `origin` = github.com/MichielNoback/literature_labeller.
-- **Working tree clean. 46/46 tests pass. `main` == `origin/main` (all work pushed).**
-  The 2026-08-27 Wikipedia-first work landed as `e79eeb0` (core), `d8b6e35` (docs) and
-  `50326a8` (compendium field formatting); local branch `wikipedia-first-lookup` is merged
-  and safe to delete.
+- **46/46 tests pass. `main` == `origin/main` at `8dba69c` — all code and docs pushed.**
+  The 2026-08-27 Wikipedia-first work landed as `e79eeb0` (core), `d8b6e35` (docs),
+  `50326a8` (compendium field formatting) and `8dba69c` (status). `main` is now the only
+  local branch — the merged `wikipedia-first-lookup` and the stale `literature-labeller`
+  (an artefact of the original cloud session) were both deleted.
+- Only pending change: this `CLAUDE.md` session note itself, left uncommitted deliberately.
 - Verified live (Playwright, nicegui 3.16) against a 4-row scratch dataset with its own
   db/config, so the real `data/labels.db` was never written to:
   - Quick Lookup: `glyphosate` → both badges + Wikipedia body + collapsed Compendium data +
