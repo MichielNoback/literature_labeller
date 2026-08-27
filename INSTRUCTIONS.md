@@ -1,7 +1,7 @@
 # Literature Labeler
 
 **Personal info**
-session name: `literature labeller`
+session name: `labeller_helper`
 
 ## Background
 

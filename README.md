@@ -17,10 +17,11 @@ opens in your browser, but all data stays on your machine.
   and automatically advance to the next entry.
 - **Skip** — press the next free digit after your labels (e.g. `5`) or click **Skip**
   to advance without labelling the current entry.
-- **Edit-previous** — press **←** (ArrowLeft) to reopen the last entry and relabel it.
+- **Edit-previous** — press **←** (ArrowLeft) to reopen the last entry and relabel it;
+  **→** (ArrowRight) moves forward one entry without labelling.
 - **Quick Lookup** — select a word/phrase and press **`q`** (or click **🔍 Look up**) for a
-  reference card: pesticide terms link to the BCPC Compendium; anything else falls back to a
-  Wikipedia summary.
+  **Wikipedia summary** of it. Known pesticide terms are looked up under their canonical
+  compound name and carry their BCPC compendium data along in a collapsed section.
 - **In-app Help** — a **Help** button opens a modal summarising the shortcuts and how
   labels are saved/recovered.
 - **Keyword highlighting** — terms from a keywords file are highlighted in the title
@@ -187,16 +188,42 @@ on each Exit; deleting it is harmless. The input dataset file is never written t
 ## Quick Lookup
 
 Select a word or phrase in the title or abstract and press **`q`** (or click **🔍 Look up**).
-A modal shows a reference card:
+A modal shows a **Wikipedia summary** of the selection: title, first paragraph, thumbnail and
+a **Read on Wikipedia ↗** link.
 
-1. **Pesticide term** — if the selection matches a term (or synonym) in the keywords file,
-   its details (formula, activity, compound groups, IUPAC name, CAS number, notes) are shown
-   with a **View on BCPC Compendium ↗** link. This is fully local — no network access.
-2. **Wikipedia** — otherwise, a Wikipedia summary is fetched (title, first paragraph,
-   thumbnail, and a **Read on Wikipedia ↗** link). Matching tries the exact title first,
-   then a search fallback.
+If the selection is a **known pesticide term** (or one of its synonyms), two things change:
 
-Matching is case-insensitive and hyphen/space-tolerant, exactly like the highlighter.
+1. The article is looked up under the term's **canonical name** instead of the words you
+   happened to select — selecting `DDT` queries `clofenotane`, selecting `1,3-dichloropropene`
+   queries `1,3-D`. If the canonical name finds nothing, your literal selection is tried next.
+2. The card is tagged **Pesticide term** and carries its compendium data along: a collapsed
+   **Compendium data** section (formula, activity, compound groups, IUPAC name, CAS number,
+   notes) plus a **View on BCPC Compendium ↗** link.
+
+Matching against the keyword file is case-insensitive and hyphen/space-tolerant, exactly like
+the highlighter.
+
+### When there is no article
+
+"No Wikipedia article found" is a **normal and frequent** outcome, not a malfunction: most
+compendium entries are obscure ISO common names that Wikipedia simply does not cover (14 of 25
+in a random sample). The message is identical whether or not the selection is a known pesticide
+term — but for a pesticide term the **Compendium data** section and the BCPC link are still
+there, so the card is never empty.
+
+A result is only shown when it is **actually about the selection**. The lookup first tries the
+exact article title, which follows Wikipedia's own redirects (this is how `clofenotane` correctly
+lands on *DDT*). Only if that fails does it fall back to a search — and the top search hit is
+accepted **only if the term appears in that article's title or first paragraph**. Without that
+guard the search returns confidently wrong answers for obscure compounds: in the same sample of
+25, eight resolved to unrelated pages such as *List of fungicides* or *Covered smut (barley)*.
+All eight are now reported as not found, while genuine indirect matches (`IR3535` →
+*Ethyl butylacetylaminopropionate*, `mercuric chloride` → *Mercury(II) chloride*) still resolve.
+
+Repeated lookups of the same term are served from an **in-memory cache** for the rest of the
+session, so re-checking a compound you have already seen is instant and costs no request.
+
+### Configuration
 
 Configuration lives under `lookup:` in `config.yaml`:
 
@@ -208,9 +235,12 @@ lookup:
   contact_email: ""          # optional; identifies your traffic to Wikipedia
 ```
 
-**Privacy / network note.** The Wikipedia fallback is the only outbound network call the app
-makes; it sends the selected text to `wikipedia.org`. Set `wikipedia_lookup: false` to keep
-the app fully offline (keyword lookups still work). The request carries a `User-Agent` of
+**Privacy / network note.** Wikipedia is the only outbound network call the app makes; it sends
+the selected text — or the resolved canonical compound name — to `wikipedia.org`. **This now
+includes pesticide terms**, which in earlier versions were looked up purely locally. Set
+`wikipedia_lookup: false` to keep the app **fully offline**: pesticide terms then render their
+compendium data directly (formula, activity, CAS, notes, BCPC link) and any other selection
+reports that it is not a known pesticide term. The request carries a `User-Agent` of
 `literature-labeller/0.1 (+<contact>)`, where `<contact>` is `contact_email` if set, otherwise
 the generic repository URL. `config.yaml` is tracked in git — leave `contact_email` blank
 unless you are comfortable publishing the address.
@@ -255,12 +285,13 @@ one overwrites the old. Notes on the current behaviour:
 ## Testing
 
 ```bash
-pytest            # 31 unit tests over data/highlight/store/lookup
+pytest            # 40 unit tests over data/highlight/store/lookup
 ```
 
 The suite covers TSV/CSV reading and column checks, keyword-term extraction, highlighting
 behaviour, SQLite upsert/overwrite, cumulative export, column preservation, the pesticide-term
-lookup index, and the Wikipedia fallback (with mocked HTTP — no network in tests).
+lookup index, canonical-name query resolution, the session cache, and the Wikipedia lookup
+including its relevance guard (with mocked HTTP — no network in tests).
 
 ---
 
@@ -279,7 +310,7 @@ literature_labeler/
 │   ├── config.py               # load/validate config.yaml -> Config
 │   ├── data.py                 # read dataset (TSV) + keyword terms (CSV); verify columns
 │   ├── highlight.py            # Highlighter: regex highlight of keyword terms
-│   ├── lookup.py               # CompoundIndex + Wikipedia summary for Quick Lookup
+│   ├── lookup.py               # CompoundIndex + Wikipedia lookup/cache for Quick Lookup
 │   ├── store.py                # LabelStore: SQLite persistence + CSV export
 │   ├── app.py                  # LabellerUI: NiceGUI page, key bindings, edit-previous, lookup
 │   └── main.py                 # entry point: wires config -> data -> store -> UI
