@@ -5,6 +5,7 @@ from literature_labeller.lookup import (
     clean_selection,
     compendium_link,
     normalize_term,
+    resolve_summary,
     wikipedia_summary,
 )
 
@@ -101,7 +102,8 @@ def test_wikipedia_404_then_search_fallback():
             raise HttpError(404)  # direct title miss
         if "list=search" in url:
             return {"query": {"search": [{"title": "Weedkiller"}]}}
-        return _summary("Weedkiller")  # summary of the searched title
+        # Lead paragraph names the query, so the relevance guard accepts it.
+        return _summary("Weedkiller", "A weed killer is a type of herbicide.")
 
     r = wikipedia_summary("weed killer", fetcher=fetcher)
     assert r.status == "found"
@@ -141,3 +143,119 @@ def test_wikipedia_network_error():
 def test_wikipedia_empty_query():
     r = wikipedia_summary("   ", fetcher=lambda url: {})
     assert r.status == "not_found"
+
+
+# --- resolve_summary: canonical-name resolution + caching (offline) --------
+
+def test_resolve_prefers_canonical_name_over_selection():
+    calls = []
+
+    def fetcher(url):
+        calls.append(url)
+        return _summary("Glyphosate")
+
+    r = resolve_summary("Roundup", {"name": "Glyphosate"}, fetcher=fetcher)
+    assert r.status == "found"
+    assert len(calls) == 1
+    assert "Glyphosate" in calls[0]  # the canonical name, not the selected synonym
+
+
+def test_resolve_falls_back_to_raw_selection():
+    def fetcher(url):
+        if "list=search" in url:
+            return {"query": {"search": []}}  # no search hit for either query
+        if "Obscurine" in url:
+            raise HttpError(404)  # the canonical name has no article
+        return _summary("Roundup")  # ...but the selection does
+
+    r = resolve_summary("Roundup", {"name": "Obscurine"}, fetcher=fetcher)
+    assert r.status == "found"
+    assert r.title == "Roundup"
+
+
+def test_resolve_not_found_when_both_queries_miss():
+    def fetcher(url):
+        if "list=search" in url:
+            return {"query": {"search": []}}
+        raise HttpError(404)
+
+    r = resolve_summary("Roundup", {"name": "Obscurine"}, fetcher=fetcher)
+    assert r.status == "not_found"
+
+
+def test_resolve_stops_on_network_error():
+    calls = []
+
+    def fetcher(url):
+        calls.append(url)
+        raise NetworkError("timed out")
+
+    r = resolve_summary("Roundup", {"name": "Glyphosate"}, fetcher=fetcher)
+    assert r.status == "error"
+    assert len(calls) == 1  # the second query is never attempted
+
+
+def test_resolve_without_record_queries_selection_only():
+    calls = []
+
+    def fetcher(url):
+        calls.append(url)
+        return _summary("Mitochondrion")
+
+    r = resolve_summary("mitochondria", None, fetcher=fetcher)
+    assert r.status == "found"
+    assert len(calls) == 1
+
+
+def test_resolve_serves_repeat_lookups_from_cache():
+    calls = []
+    cache = {}
+
+    def fetcher(url):
+        calls.append(url)
+        return _summary("Glyphosate")
+
+    first = resolve_summary("glyphosate", None, fetcher=fetcher, cache=cache)
+    second = resolve_summary("Glyphosate.", None, fetcher=fetcher, cache=cache)
+    assert first.title == second.title == "Glyphosate"
+    assert len(calls) == 1  # normalized key: the repeat is served from cache
+
+
+def test_resolve_does_not_cache_errors():
+    cache = {}
+
+    def fetcher(url):
+        raise NetworkError("timed out")
+
+    resolve_summary("glyphosate", None, fetcher=fetcher, cache=cache)
+    assert cache == {}  # transient failures must not stick for the session
+
+
+# --- relevance guard on the search fallback --------------------------------
+
+def test_search_fallback_rejects_off_topic_article():
+    def fetcher(url):
+        if "list=search" in url:
+            return {"query": {"search": [{"title": "List of fungicides"}]}}
+        if "List_of_fungicides" in url:
+            # A list page whose lead never names the compound: a wrong answer.
+            return _summary("List of fungicides", "This is a list of fungicides.")
+        raise HttpError(404)
+
+    r = wikipedia_summary("bentaluron", fetcher=fetcher)
+    assert r.status == "not_found"
+
+
+def test_search_fallback_accepts_article_naming_the_query():
+    def fetcher(url):
+        if "list=search" in url:
+            return {"query": {"search": [{"title": "Mercury(II) chloride"}]}}
+        if "Mercury" in url:
+            return _summary(
+                "Mercury(II) chloride", "Mercury(II) chloride, also known as mercuric chloride..."
+            )
+        raise HttpError(404)
+
+    r = wikipedia_summary("mercuric chloride", fetcher=fetcher)
+    assert r.status == "found"
+    assert r.title == "Mercury(II) chloride"

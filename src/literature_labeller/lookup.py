@@ -119,6 +119,20 @@ def _search_url(lang: str, query: str) -> str:
     return f"https://{lang}.wikipedia.org/w/api.php?{params}"
 
 
+def _is_relevant(query: str, data: dict) -> bool:
+    """Is a *search-fallback* article actually about ``query``?
+
+    An exact-title hit is authoritative (Wikipedia resolves redirects server-side),
+    but the top search hit for an obscure compound is often a list or chemical-class
+    page that merely mentions it — or nothing related at all. Require the query to
+    appear in the article's title or lead paragraph before accepting it.
+    """
+    q = normalize_term(query)
+    if not q:
+        return False
+    return q in normalize_term(f"{data.get('title', '')} {data.get('extract', '')}")
+
+
 def _from_summary(data: dict) -> WikiResult:
     return WikiResult(
         status="found",
@@ -175,4 +189,63 @@ def wikipedia_summary(
 
     if data.get("type") == "disambiguation":
         return WikiResult("not_found", message=f"No specific Wikipedia article for {q!r}.")
+    if not _is_relevant(q, data):
+        # The best search hit is off-topic; reporting nothing beats reporting the wrong compound.
+        return WikiResult("not_found", message=f"No Wikipedia article found for {q!r}.")
     return _from_summary(data)
+
+
+# --- Lookup orchestration --------------------------------------------------
+
+# Session cache of Wikipedia results, keyed by (lang, normalized query).
+WikiCache = dict[tuple[str, str], WikiResult]
+
+
+def _query_candidates(selection: str, record: dict[str, str] | None) -> list[str]:
+    """Ordered, de-duplicated queries: canonical compound name first, then the selection."""
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for text in ((record or {}).get("name", ""), selection):
+        cleaned = clean_selection(text)
+        key = normalize_term(cleaned)
+        # A selection that already *is* the canonical name yields a single query.
+        if key and key not in seen:
+            seen.add(key)
+            candidates.append(cleaned)
+    return candidates
+
+
+def resolve_summary(
+    selection: str,
+    record: dict[str, str] | None = None,
+    *,
+    lang: str = "en",
+    contact: str = "",
+    timeout: float = 5.0,
+    fetcher: Fetcher | None = None,
+    cache: WikiCache | None = None,
+) -> WikiResult:
+    """Find the best Wikipedia article for a selection, using its compound record.
+
+    When the selection is a known pesticide term, its canonical ``name`` is queried
+    first — a selection is often a synonym, which makes a poorer query — falling back
+    to the raw selection. Outcomes are memoized in the caller-owned ``cache``.
+    """
+    result = WikiResult(
+        "not_found", message=f"No Wikipedia article found for {clean_selection(selection)!r}."
+    )
+    for query in _query_candidates(selection, record):
+        key = (lang, normalize_term(query))
+        if cache is not None and key in cache:
+            result = cache[key]
+        else:
+            result = wikipedia_summary(
+                query, lang=lang, contact=contact, timeout=timeout, fetcher=fetcher
+            )
+            # Errors are transient, so only definitive outcomes are memoized.
+            if cache is not None and result.status != "error":
+                cache[key] = result
+        # A hit ends the search; a network error stops it (never retry a failing host).
+        if result.status in ("found", "error"):
+            return result
+    return result

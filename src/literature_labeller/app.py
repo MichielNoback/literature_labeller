@@ -45,6 +45,8 @@ class LabellerUI:
         self.store = store
         self.session = session
         self.compound_index = compound_index
+        # Wikipedia results memoized for the session (common terms recur constantly).
+        self._wiki_cache: lookup.WikiCache = {}
         self.index = self._first_unlabelled()
         # Skip uses the first digit not already claimed by a label (0-4 -> 5).
         self.skip_key = self._first_free_digit()
@@ -133,25 +135,28 @@ class LabellerUI:
             self._render_message("Select a shorter word or phrase.")
             return
 
-        # 1. Local pesticide-term match takes priority (no network).
+        # The local index resolves a selected synonym to its canonical compound name,
+        # which makes a far better Wikipedia query. None => not a pesticide term.
         record = self.compound_index.get(text)
-        if record is not None:
-            self._render_compound(record)
-            return
 
-        # 2. Fall back to Wikipedia if enabled.
+        # Offline mode: no outbound call, so show the static compendium data instead.
         if not self.config.lookup.wikipedia_lookup:
-            self._render_message(f"“{text}” is not a known pesticide term.")
+            if record is not None:
+                self._render_compound(record)
+            else:
+                self._render_message(f"“{text}” is not a known pesticide term.")
             return
 
         self._render_loading(text)  # opens the dialog with a spinner
         result = await asyncio.to_thread(
-            lookup.wikipedia_summary,
+            lookup.resolve_summary,
             text,
+            record,
             lang=self.config.lookup.wikipedia_lang,
             contact=self.config.lookup.contact,
+            cache=self._wiki_cache,
         )
-        self._render_wiki(text, result)  # repopulates the already-open dialog
+        self._render_lookup_card(record, result)  # repopulates the already-open dialog
 
     def _lookup_reset(self):
         """Clear the lookup modal body and return it as a context manager."""
@@ -170,41 +175,54 @@ class LabellerUI:
                 ui.label(f"Looking up “{text}” on Wikipedia…")
         self._lookup_dialog.open()
 
+    def _compound_fields(self, record: dict) -> None:
+        """Render the static compendium fields of a record; blank fields are omitted."""
+
+        def field(label: str, value) -> None:
+            text = "" if value is None else str(value).strip()
+            if text:
+                with ui.row().classes("gap-1 items-start"):
+                    ui.label(f"{label}:").classes("font-semibold whitespace-nowrap")
+                    ui.label(text)
+
+        synonyms = (record.get("synonyms") or "").replace(";", ", ").strip(", ")
+        field("Synonyms", synonyms)
+        field("Formula", record.get("Formula"))
+        field("Activity", record.get("Activity"))
+        field("Compound groups", record.get("Compound_groups"))
+        field("IUPAC name", record.get("IUPAC name") or record.get("IUPAC Name"))
+        field("CAS Reg No", record.get("CAS Reg No"))
+
+        notes = (record.get("Notes") or "").strip()
+        if notes and len(notes) <= NOTES_PREVIEW_CHARS:
+            field("Notes", notes)
+        elif notes:
+            with ui.expansion("Notes").classes("w-full"):
+                ui.label(notes)
+
+    def _compendium_link(self, record: dict) -> None:
+        """Render the BCPC Compendium linkout, for records that have one."""
+        link = lookup.compendium_link(record, self.config.lookup.compendium_base_url)
+        if link:
+            ui.link("View on BCPC Compendium ↗", link, new_tab=True)
+
     def _render_compound(self, record: dict) -> None:
+        """Offline card (Wikipedia disabled): the static compendium data only."""
         with self._lookup_reset():
             ui.badge("Pesticide term").props("color=green")
             ui.label(record.get("name", "")).classes("text-lg font-bold")
-
-            def field(label: str, value) -> None:
-                text = "" if value is None else str(value).strip()
-                if text:
-                    with ui.row().classes("gap-1 items-start"):
-                        ui.label(f"{label}:").classes("font-semibold whitespace-nowrap")
-                        ui.label(text)
-
-            synonyms = (record.get("synonyms") or "").replace(";", ", ").strip(", ")
-            field("Synonyms", synonyms)
-            field("Formula", record.get("Formula"))
-            field("Activity", record.get("Activity"))
-            field("Compound groups", record.get("Compound_groups"))
-            field("IUPAC name", record.get("IUPAC name") or record.get("IUPAC Name"))
-            field("CAS Reg No", record.get("CAS Reg No"))
-
-            notes = (record.get("Notes") or "").strip()
-            if notes and len(notes) <= NOTES_PREVIEW_CHARS:
-                field("Notes", notes)
-            elif notes:
-                with ui.expansion("Notes").classes("w-full"):
-                    ui.label(notes)
-
-            link = lookup.compendium_link(record, self.config.lookup.compendium_base_url)
-            if link:
-                ui.link("View on BCPC Compendium ↗", link, new_tab=True)
+            self._compound_fields(record)
+            self._compendium_link(record)
         self._lookup_dialog.open()
 
-    def _render_wiki(self, text: str, result: lookup.WikiResult) -> None:
+    def _render_lookup_card(self, record: dict | None, result: lookup.WikiResult) -> None:
+        """Wikipedia card; a known pesticide term carries its compendium data along."""
         with self._lookup_reset():
-            ui.badge("Wikipedia").props("color=blue")
+            with ui.row().classes("items-center gap-2"):
+                if record is not None:
+                    ui.badge("Pesticide term").props("color=green")
+                ui.badge("Wikipedia").props("color=blue")
+
             if result.status == "found":
                 ui.label(result.title).classes("text-lg font-bold")
                 if result.thumbnail:
@@ -214,7 +232,16 @@ class LabellerUI:
                 if result.url:
                     ui.link("Read on Wikipedia ↗", result.url, new_tab=True)
             else:
-                ui.label(result.message or f"No result for “{text}”.")
+                # Identical wording whether or not the selection is a pesticide term.
+                ui.label(result.message or "No Wikipedia article found.")
+
+            # A pesticide term keeps its compendium data, collapsed under the summary.
+            if record is not None:
+                ui.separator()
+                with ui.expansion("Compendium data").classes("w-full"):
+                    ui.label(record.get("name", "")).classes("font-bold")
+                    self._compound_fields(record)
+                self._compendium_link(record)
         self._lookup_dialog.open()
 
     def exit_session(self) -> None:
@@ -250,9 +277,11 @@ class LabellerUI:
             "- select a word/phrase, then `q` (or the 🔍 Look up button) — quick reference lookup\n"
             "- **Exit** button — export the CSV and quit\n\n"
             "**Quick Lookup**\n\n"
-            "Select a word or phrase in the title/abstract and press `q`. If it is a "
-            "pesticide term, its details and a link to the BCPC Compendium are shown; "
-            "otherwise a Wikipedia summary is shown (if enabled in the config).\n\n"
+            "Select a word or phrase in the title/abstract and press `q` to see a "
+            "Wikipedia summary of it. If the selection is a known pesticide term (or a "
+            "synonym of one), the article for the canonical compound is looked up, and "
+            "its compendium details plus a BCPC Compendium link are carried along under "
+            "**Compendium data**.\n\n"
             "**Correcting a mistake**\n\n"
             "Press `←` to reopen the entry you want to change, then press the correct "
             "number key. The new label overwrites the old one (last decision wins). "
