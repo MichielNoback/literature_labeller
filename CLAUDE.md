@@ -84,9 +84,10 @@ Exit exports the CSV.
 
 - Repo bootstrapped; large corpora gitignored (only the 1.1 MB pesticide-terms CSV tracked).
   Remote `origin` = github.com/MichielNoback/literature_labeller.
-- **46/46 tests pass.** **Uncommitted** (2026-08-27): the Wikipedia-first lookup change
-  (`lookup.py`, `app.py`, `tests/test_lookup.py`) plus `README.md`, `SPECIFICATIONS.md`,
-  `CLAUDE.md` and an earlier `INSTRUCTIONS.md` session-name tweak. Nothing pushed yet.
+- **Working tree clean. 46/46 tests pass. `main` == `origin/main` (all work pushed).**
+  The 2026-08-27 Wikipedia-first work landed as `e79eeb0` (core), `d8b6e35` (docs) and
+  `50326a8` (compendium field formatting); local branch `wikipedia-first-lookup` is merged
+  and safe to delete.
 - Verified live (Playwright, nicegui 3.16) against a 4-row scratch dataset with its own
   db/config, so the real `data/labels.db` was never written to:
   - Quick Lookup: `glyphosate` → both badges + Wikipedia body + collapsed Compendium data +
