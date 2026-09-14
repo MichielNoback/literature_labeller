@@ -31,7 +31,7 @@ no requests/httpx).
 | `highlight.py` | `Highlighter` — regex-highlight keyword terms in title/abstract |
 | `lookup.py` | Quick Lookup: `CompoundIndex` (term→record), `wikipedia_summary()` (stdlib urllib, injectable fetcher, relevance-guarded search fallback), `resolve_summary()` (canonical-name-then-selection + session cache) |
 | `store.py` | `LabelStore` — SQLite persistence + cumulative CSV export |
-| `app.py` | `LabellerUI` — NiceGUI page, key bindings, edit-previous, Skip, arrow-nav, Quick Lookup, Help modal |
+| `app.py` | `LabellerUI` — NiceGUI page, key bindings, edit-previous, Skip, arrow-nav, Quick Lookup, Help modal, Exit modal |
 | `main.py` | Entry point: wires config→data→highlighter→CompoundIndex→store→UI, `ui.run` |
 | `scripts/make_sample.py` | Stage 1: sample 15k abstract-bearing rows from the real tab-separated corpus |
 | `scripts/make_synthetic.py` | Generate a small synthetic CSV for dev/testing |

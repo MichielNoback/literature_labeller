@@ -115,7 +115,7 @@ python scripts/make_synthetic.py     # writes data/pubmed_sample_with_keywords.c
 | Press **→** (ArrowRight) | Moves forward one entry without labelling |
 | Select text + press **`q`** (or click **🔍 Look up**) | Opens a Quick Lookup card for the selection (see below) |
 | Click **Help** | Opens a modal with the shortcuts and data-safety notes |
-| Click **Exit** | Exports the cumulative CSV and shuts the server down |
+| Click **Exit** | Writes the cumulative CSV (spinner while writing), confirms the file path on screen, then shuts the server down |
 
 The Skip hotkey is the first digit not used by a label — with labels `0`–`4` that is `5`.
 
@@ -256,6 +256,11 @@ immediately (one atomic SQLite commit per label). There is no unsaved buffer.
 the app reopens `labels.db` and resumes at the first *unlabelled* entry. The only thing
 a crash skips is the CSV export (written on Exit) — but that is just a regenerable
 snapshot of the database; press Exit in a later session to rebuild it.
+
+**On Exit** you get a spinner while the CSV is written, then a confirmation naming the file
+that was written and telling you the tab can be closed; the server stops a moment later. If
+the write fails (e.g. no permission on the output directory), the app says so and **keeps
+running** so you can fix it and press Exit again — your labels are in the database either way.
 
 **To correct a wrong label:** press **←** to reopen the entry (it shows its current
 label), then press the correct number key. Labels are *last-decision-wins*, so the new

@@ -60,6 +60,8 @@ class LabellerUI:
         self._label_buttons: dict[int, ui.button] = {}
         self._lookup_dialog: ui.dialog | None = None
         self._lookup_body: ui.column | None = None
+        self._exit_dialog: ui.dialog | None = None
+        self._exit_body: ui.column | None = None
 
     # -- navigation state ---------------------------------------------------
 
@@ -244,16 +246,65 @@ class LabellerUI:
                 self._compendium_link(record)
         self._lookup_dialog.open()
 
-    def exit_session(self) -> None:
-        written = self.store.export_csv(self.dataset, self.config.output_csv)
+    async def exit_session(self) -> None:
+        """Export the CSV, confirm it on screen, then stop the server.
+
+        The confirmation has to be rendered *before* the shutdown: `ui.notify` only queues a
+        message for the browser, so shutting down on the next line kills the connection
+        before it is ever delivered.
+        """
+        with self._exit_body:
+            ui.spinner(size="lg")
+            ui.label("Writing labels…").classes("text-lg")
+        self._exit_dialog.open()
+
+        # Yield so the browser receives and paints the spinner before the write begins. The
+        # export itself stays on the event loop: the SQLite connection is bound to the thread
+        # that opened it, and at ~350 ms for the full 15k sample it is not worth a second
+        # connection just to offload it (the spinner animates in the browser regardless).
+        await asyncio.sleep(0.1)
+        try:
+            written = self.store.export_csv(self.dataset, self.config.output_csv)
+        except OSError as exc:
+            self._render_exit_error(exc)  # keep serving so the export can be retried
+            return
+
         self.store.close()
-        ui.notify(
-            f"Exported {written} labelled entries to {self.config.output_csv.name}. "
-            "You can close this tab.",
-            type="positive",
-            timeout=0,
+        self._render_exit_done(written)
+        # NiceGUI raises a "Connection lost" popup the moment the server goes away, which
+        # would sit on top of the confirmation and read as a failure. Suppress it.
+        ui.run_javascript(
+            "document.head.insertAdjacentHTML('beforeend',"
+            "'<style>#popup{display:none!important}</style>')"
         )
+        # Let the browser receive and render the confirmation before the server dies.
+        await asyncio.sleep(1.5)
         app.shutdown()
+
+    def _render_exit_done(self, written: int) -> None:
+        """Final screen: the export succeeded and the tab can be closed."""
+        self._exit_body.clear()
+        with self._exit_body:
+            ui.icon("check_circle", size="3rem").classes("text-green-600")
+            ui.label("Data written to").classes("text-sm text-gray-500")
+            ui.label(str(self.config.output_csv)).classes(
+                "text-sm font-mono font-bold text-center break-all"
+            )
+            ui.label(f"{written} labelled entries exported.").classes("text-sm text-gray-500")
+            ui.label("You can close this browser tab.").classes("text-lg font-bold pt-2")
+
+    def _render_exit_error(self, exc: Exception) -> None:
+        """The export failed: say so plainly and keep the app alive so nothing is lost."""
+        self._exit_body.clear()
+        with self._exit_body:
+            ui.icon("error", size="3rem").classes("text-red-600")
+            ui.label("Could not write the CSV").classes("text-lg font-bold")
+            ui.label(str(exc)).classes("text-sm text-center break-all")
+            ui.label(
+                "Your labels are still safe in the database — the CSV is only a snapshot. "
+                "Fix the problem and press Exit again."
+            ).classes("text-sm text-center text-gray-500")
+            ui.button("Close", on_click=self._exit_dialog.close).props("flat")
 
     # -- rendering ----------------------------------------------------------
 
@@ -275,7 +326,7 @@ class LabellerUI:
             "- `←` (Left Arrow) — reopen the previous entry to correct its label\n"
             "- `→` (Right Arrow) — move forward one entry without labelling\n"
             "- select a word/phrase, then `q` (or the 🔍 Look up button) — quick reference lookup\n"
-            "- **Exit** button — export the CSV and quit\n\n"
+            "- **Exit** button — write the CSV, confirm the file on screen, then quit\n\n"
             "**Quick Lookup**\n\n"
             "Select a word or phrase in the title/abstract and press `q` to see a "
             "Wikipedia summary of it. If the selection is a known pesticide term (or a "
@@ -305,6 +356,10 @@ class LabellerUI:
         with ui.dialog() as self._lookup_dialog, ui.card().classes("max-w-lg w-full"):
             self._lookup_body = ui.column().classes("w-full gap-2")
             ui.button("Close", on_click=self._lookup_dialog.close).props("flat")
+
+        # Exit modal — persistent: once the export starts, the session is over.
+        with ui.dialog().props("persistent") as self._exit_dialog, ui.card().classes("p-6"):
+            self._exit_body = ui.column().classes("items-center gap-2 min-w-[20rem]")
 
         with ui.column().classes("w-full max-w-3xl mx-auto gap-3 p-4"):
             with ui.row().classes("w-full items-center justify-between"):
